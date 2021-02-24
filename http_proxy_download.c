@@ -15,7 +15,10 @@
 #include <arpa/inet.h> 
 
 // ./http_proxy_download.out info.in2p3.fr 182.75.45.22 13128 csf303 csf303 index.html logo.gif
-//             0                   1             2        3      4      5       6          7               
+//             0                   1             2        3      4      5       6          7  
+
+// GET http://info.in2p3.fr/ HTTP/1.1
+// Proxy-Authorization: Basic Y3NmMzAzOmNzZjMwMw==             
 
 int main(int argc, char *argv[]) {
     if(argc < 7) {
@@ -61,43 +64,77 @@ int main(int argc, char *argv[]) {
     }
     printf("Connected\n");
     
-
-    char request[2000];
-    char server_reply[100000];
-    memset(request, '0', sizeof(request));
-    // memset(server_reply, '0', sizeof(server_reply));
-    sprintf(request, "GET / HTTP/1.1\r\nHost: %s\r\n\r\n", host_name);
-    if(send(socket_desc, request, strlen(request), 0) < 0)
-    {
-        printf("\n Error : Could not send request to server \n");
-        return 1;
-    }
-    else printf("Data Send\n");
-    
-    //Receive a reply from the server
+    char server_reply[5000];
     int received_length;
-    if((received_length = recv(socket_desc, server_reply, 2000, 0)) < 0)
-    {
-        printf("\n Error : Could not receive from server \n");
-    }
-    else printf("Reply received\n");
-    printf("%d\n", received_length);
-    
     int write = 0;
-    FILE *fp;
-    if((fp = fopen(argv[6], "w")) == NULL){
-        printf("\n Error : Could not open file to write the html \n");
-    }
-    else{
-        for(int i=0; i<strlen(server_reply); i++) {
-            if(server_reply[i] == '<')   write = 1;
-            if(write == 1) {
-                fputc(server_reply[i], fp);
-            }
-        } 
+    if(image == 0) {
+        char request[2000];
+        memset(request, '0', sizeof(request));
+        sprintf(request, "GET / HTTP/1.1\r\nHost: %s\r\n\r\n", host_name);
+        if(send(socket_desc, request, strlen(request), 0) < 0)
+        {
+            printf("\n Error : Could not send request to server \n");
+            return 1;
+        }
+        else printf("Data Send\n");
+        
+        //Receive a reply from the server
+        FILE *fp;
+        memset(server_reply, '0', sizeof(server_reply));
+        if((fp = fopen(argv[6], "w")) == NULL){
+            printf("\n Error : Could not open file to write the html \n");
+        }
+        while((received_length = recv(socket_desc, server_reply, 5000, 0)) > 0)
+        {
+            printf("%d\n", received_length);
+            for(int i=0; i<received_length; i++) {
+                if(server_reply[i] == '<')   write = 1;
+                if(write == 1) {
+                    fputc(server_reply[i], fp);
+                }
+            } 
+            memset(server_reply, '0', sizeof(server_reply));
+        }
         fputs("\n", fp); 
         fclose(fp);
     }
+    else {
+        char request[2000];
+        memset(request, '0', sizeof(request));
+        // memset(server_reply, '0', sizeof(server_reply));
+        sprintf(request, "GET / HTTP/1.1\r\nHost: %s\r\n\r\n", host_name);
+        if(send(socket_desc, request, strlen(request), 0) < 0)
+        {
+            printf("\n Error : Could not send request to server \n");
+            return 1;
+        }
+        else printf("Data Send\n");
+        
+        //Receive a reply from the server
+        int received_length;
+        if((received_length = recv(socket_desc, server_reply, 5000, 0)) < 0)
+        {
+            printf("\n Error : Could not receive from server \n");
+        }
+        else printf("Reply received\n");
+        printf("%d\n", received_length);
+        
+        int write = 0;
+        FILE *fp;
+        if((fp = fopen(argv[6], "w")) == NULL){
+            printf("\n Error : Could not open file to write the html \n");
+        }
+        else{
+            for(int i=0; i<strlen(server_reply); i++) {
+                if(server_reply[i] == '<')   write = 1;
+                if(write == 1) {
+                    fputc(server_reply[i], fp);
+                }
+            } 
+            fclose(fp);
+        }
+    }
+    
     // html written to file
     printf("html written to the file\n");
     close(socket_desc);
@@ -111,7 +148,11 @@ Host: info.in2p3.fr
 */
     
     //<IMG SRC="cc.gif">
-    if(image) {
+    if(image == 1) {
+        if(argc == 7) {
+            printf("\n Error : File to save logo not specified \n");
+            return 1;
+        }
         char image_src[200];
         char *first_pos;
         first_pos = strstr(server_reply, "SRC");
@@ -120,7 +161,7 @@ Host: info.in2p3.fr
         for(int i=start_of_source; server_reply[i] != '\"'; i++){
             image_src[i-start_of_source] = server_reply[i];
         }
-        printf("\n image source is /%s\n", image_src);
+        printf("\nImage source is /%s\n", image_src);
 
         int socket_desc_img;
         if((socket_desc_img = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
@@ -135,7 +176,6 @@ Host: info.in2p3.fr
         printf("Connected\n");
 
         char image_request[2000];
-        char image_reply[500000];
         memset(image_request, '0', sizeof(image_request));
         sprintf(image_request, "GET /%s HTTP/1.1\r\nHost: %s\r\n\r\n", image_src, host_name);
         if(send(socket_desc_img, image_request, strlen(image_request), 0) < 0)
@@ -146,31 +186,33 @@ Host: info.in2p3.fr
         else printf("Data Send\n");
         
         //Receive a reply from the server
-        if((received_length = recv(socket_desc_img, image_reply, 2000, 0)) < 0)
-        {
-            printf("\n Error : Could not receive image from server \n");
-        }
-        else printf("Reply received\n");
-        printf("%d\n", received_length);
-        
-        int write = 0;
-        if((fp = fopen(argv[7], "w")) == NULL){
+        char image_reply[10000];
+        FILE *img_fp;
+        memset(image_reply, '0', sizeof(image_reply));
+        write = 0;
+        if((img_fp = fopen(argv[7], "w")) == NULL){
             printf("\n Error : Could not open file to save the image \n");
         }
-        else{
-            write = 0;
+        int total = 0, flag = 0;
+        while((received_length = recv(socket_desc_img, image_reply, 10000, 0)) > 0)
+        {
+            printf("%d\n", received_length);
+            total += received_length;
             for(int i=0; i<received_length; i++) {
-                // if(server_reply[i] == '<')   write = 1;
-                // if(write == 1) {
-                //    fputc(server_reply[i], fp);
-                // }
+                if(image_reply[i] == '\n'){
+                   flag++;
+                }
+                if(flag == 9)   write ++;
+                if(write >= 2) {
+                   fputc(image_reply[i], img_fp);
+                }
             } 
-            fputs(server_reply, fp);
-            // fputs("\n", fp); 
-            fclose(fp);
+            memset(image_reply, '0', sizeof(image_reply));
         }
-        // html written to file
-        printf("image saved to the file\n");
+        // fputs(server_reply, fp);
+        fclose(img_fp);
+
+        printf("Image saved to the file, total %d bytes\n", total);
         close(socket_desc_img);
     }
     

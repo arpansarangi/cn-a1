@@ -2,3 +2,4 @@ socket/
 *.pdf
 *.ppt
 tcp*
+*.exe

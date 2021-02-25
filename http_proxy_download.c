@@ -3,11 +3,11 @@
 /* Brief description of program...*/
 /* ... */
 
+#include <stdio.h>
 #include <sys/socket.h>
 #include <sys/types.h>
 #include <netinet/in.h>
 #include <netdb.h>
-#include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -15,16 +15,77 @@
 #include <arpa/inet.h> 
 
 // ./http_proxy_download.out info.in2p3.fr 182.75.45.22 13128 csf303 csf303 index.html logo.gif
-//             0                   1             2        3      4      5       6          7  
-
-// GET http://info.in2p3.fr/ HTTP/1.1
-// Proxy-Authorization: Basic Y3NmMzAzOmNzZjMwMw==             
+//             0                   1             2        3      4      5       6          7              
 
 int main(int argc, char *argv[]) {
     if(argc < 7) {
         printf("\n Error : Arguments missing \n");
         return 1;
     } 
+
+    // base64encode
+    char encoding[64];
+    int j=0;
+    for(int j=0; j<26; j++){
+        encoding[j] = j + 'A';
+    }
+    for(int j=0; j<26; j++){
+        encoding[j+26] = j + 'a';
+    }
+    for(int j=0; j<10; j++){
+        encoding[j+52] = j + '0';
+    }
+    encoding[62] = '+', encoding[63] = '/';
+    // printf("%s\n", encoding);
+    char input[60];
+    j=0;
+    for(int i=0; argv[4][i]!='\0'; i++){
+        input[j++] = argv[4][i];
+    }
+    input[j++] = ':';
+    for(int i=0; argv[5][i]!='\0'; i++){
+        input[j++] = argv[4][i];
+    }
+
+    int input_powers[] = {128, 64, 32, 16, 8, 4, 2, 1};
+    int output_powers[] = {32, 16, 8, 4, 2, 1};
+    char binary_form[500];
+    int b=0;
+    for(int k=0; k<j; k++){
+        int pos=(int)input[k];
+        if(pos == -1) {
+            printf("\n Error: Username or password has characters which are not allowed \n");
+            return 1;
+        }
+        for(int i=0; i<8; i++){
+            if(input_powers[i] <= pos){
+                binary_form[b++] = '1';
+                pos -= input_powers[i];
+            }
+            else    binary_form[b++] = '0';
+        }
+    }
+    char output[80];
+    int o=0;
+    int new_base = 0; 
+    for(int k=0; k<b; k++){
+        int l = k%6;
+        if(l == 0 && k>0){
+            output[o++] = encoding[new_base];
+            new_base = 0;
+        }  
+        if(binary_form[k] == '1')   new_base += output_powers[l];
+    }
+    output[o++] = encoding[new_base];
+    if(o%4 == 2){
+        output[o++] = '=';
+        output[o++] = '=';
+    }
+    else if(o%4 == 3){
+        output[o++] = '=';
+    }
+    printf("%s\n", output);
+
 
     int socket_desc;
     struct sockaddr_in serv_addr;
@@ -41,19 +102,21 @@ int main(int argc, char *argv[]) {
     }
 
     //Get ip address of host.
-    struct hostent *he;
+    // struct hostent *he;
     char host_name[100];
     memset(host_name, '0', sizeof(host_name));
     strcpy(host_name, argv[1]);
-    if((he = gethostbyname(host_name)) == NULL) {
-        printf("\n Error : Could not get ip of host \n");
-        return 1;
-    }
-    
-    // serv_addr.sin_addr.s_addr = inet_addr(ip);
-    memcpy(&serv_addr.sin_addr, he -> h_addr_list[0], he -> h_length);
+    // if((he = gethostbyname(host_name)) == NULL) {
+    //     printf("\n Error : Could not get ip of host \n");
+    //     return 1;
+    // }
+    char ip[30], port[10];
+    strcpy(ip, argv[2]);
+    strcpy(port, argv[3]);
+    serv_addr.sin_addr.s_addr = inet_addr(ip);
+    // memcpy(&serv_addr.sin_addr, he -> h_addr_list[0], he -> h_length);
     serv_addr.sin_family = AF_INET;
-    serv_addr.sin_port = htons(80);
+    serv_addr.sin_port = htons(atoi(port));
 
 
     //Connect to remote server
@@ -64,13 +127,16 @@ int main(int argc, char *argv[]) {
     }
     printf("Connected\n");
     
+// GET http://info.in2p3.fr/ HTTP/1.1
+// Proxy-Authorization: Basic Y3NmMzAzOmNzZjMwMw== 
+
     char server_reply[5000];
     int received_length;
     int write = 0;
     if(image == 0) {
         char request[2000];
         memset(request, '0', sizeof(request));
-        sprintf(request, "GET / HTTP/1.1\r\nHost: %s\r\n\r\n", host_name);
+        sprintf(request, "GET http://%s/ HTTP/1.1\r\nProxy-Authorization: Basic %s\r\n\r\n", argv[1], output);
         if(send(socket_desc, request, strlen(request), 0) < 0)
         {
             printf("\n Error : Could not send request to server \n");
@@ -95,14 +161,14 @@ int main(int argc, char *argv[]) {
             } 
             memset(server_reply, '0', sizeof(server_reply));
         }
-        fputs("\n", fp); 
+        // fputs("\n", fp); 
         fclose(fp);
     }
     else {
         char request[2000];
         memset(request, '0', sizeof(request));
         // memset(server_reply, '0', sizeof(server_reply));
-        sprintf(request, "GET / HTTP/1.1\r\nHost: %s\r\n\r\n", host_name);
+        sprintf(request, "GET http://%s/ HTTP/1.1\r\nProxy-Authorization: Basic %s\r\n\r\n", argv[1], output);
         if(send(socket_desc, request, strlen(request), 0) < 0)
         {
             printf("\n Error : Could not send request to server \n");
@@ -139,13 +205,6 @@ int main(int argc, char *argv[]) {
     printf("html written to the file\n");
     close(socket_desc);
     
-
-/*
-GET /cc.gif HTTP/1.1
-Host: info.in2p3.fr
-
-
-*/
     
     //<IMG SRC="cc.gif">
     if(image == 1) {
@@ -177,7 +236,7 @@ Host: info.in2p3.fr
 
         char image_request[2000];
         memset(image_request, '0', sizeof(image_request));
-        sprintf(image_request, "GET /%s HTTP/1.1\r\nHost: %s\r\n\r\n", image_src, host_name);
+        sprintf(image_request, "GET http://%s/%s HTTP/1.1\r\nProxy-Authorization: Basic %s\r\n\r\n", argv[1], image_src, output);
         if(send(socket_desc_img, image_request, strlen(image_request), 0) < 0)
         {
             printf("\n Error : Could not send image_request to server \n");
@@ -186,15 +245,16 @@ Host: info.in2p3.fr
         else printf("Data Send\n");
         
         //Receive a reply from the server
-        char image_reply[10000];
+        char image_reply[5000];
         FILE *img_fp;
         memset(image_reply, '0', sizeof(image_reply));
         write = 0;
         if((img_fp = fopen(argv[7], "w")) == NULL){
             printf("\n Error : Could not open file to save the image \n");
+            return 1;
         }
         int total = 0, flag = 0;
-        while((received_length = recv(socket_desc_img, image_reply, 10000, 0)) > 0)
+        while((received_length = recv(socket_desc_img, image_reply, 5000, 0)) > 0)
         {
             printf("%d\n", received_length);
             total += received_length;
@@ -202,14 +262,13 @@ Host: info.in2p3.fr
                 if(image_reply[i] == '\n'){
                    flag++;
                 }
-                if(flag == 9)   write ++;
+                if(flag == 13)   write ++;
                 if(write >= 2) {
                    fputc(image_reply[i], img_fp);
                 }
             } 
             memset(image_reply, '0', sizeof(image_reply));
         }
-        // fputs(server_reply, fp);
         fclose(img_fp);
 
         printf("Image saved to the file, total %d bytes\n", total);

@@ -134,9 +134,12 @@ int main(int argc, char *argv[]) {
     int received_length;
     int write = 0, total = 0, content_length = 10000;
     
+    FILE *fp;
+    int first;
     char request[2000];
     memset(request, '0', sizeof(request));
     sprintf(request, "GET http://%s/ HTTP/1.1\r\nProxy-Authorization: Basic %s\r\n\r\n", argv[1], output);
+    g:
     if(send(socket_desc, request, strlen(request), 0) < 0)
     {
         printf("\n Error : Could not send request to server \n");
@@ -145,16 +148,30 @@ int main(int argc, char *argv[]) {
     else printf("Data Send\n");
     
     //Receive a reply from the server
-    FILE *fp;
     memset(server_reply, '0', sizeof(server_reply));
     if((fp = fopen(argv[6], "w")) == NULL){
         printf("\n Error : Could not open file to write the html \n");
     }
-    int first = 1;
+    first = 1;
     do
     {
         received_length = recv(socket_desc, server_reply, 5000, 0);
         if(first == 1){
+            if(server_reply[9] == '3'){
+                char redirect[50];
+                int j = 0;
+                char *loc;
+                loc = strstr(server_reply, "Location: ");
+                int location = 10 + (loc - server_reply);
+                for(int i=location; server_reply[i] != '\r' && server_reply[i] != '\n' && i < received_length; i++){
+                    redirect[j++] = server_reply[i];
+                }
+                redirect[j] = '\0';
+                fclose(fp);
+                sprintf(request, "GET %s HTTP/1.1\r\nProxy-Authorization: Basic %s\r\n\r\n", redirect, output);
+                printf("\nRedirected to %s\n", redirect);
+                goto g;
+            }
             char *bookmark;
             bookmark = strstr(server_reply, "Content-Length: ");
             int mark = bookmark - server_reply;
